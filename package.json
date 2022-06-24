@@ -7,7 +7,7 @@
     "lint": "eslint --fix",
     "run": "esr --cache src/index.ts",
     "dev": "esbuild-dev -w",
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --target=node16.14.2 --outdir=dist",
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --target=node16.15.1 --outdir=dist",
     "start": "node dist/index.js"
   },
   "author": "Konstantin Spieß",

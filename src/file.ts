@@ -1,64 +1,85 @@
 import { spawn } from 'child_process';
-import { Transform } from 'stream';
+
+type spawnChildProcessOptions = {
+  log?: {
+    spawn: string;
+    close: string;
+  };
+};
 
 /**
- * Compresses and encrypts a file.
- * @param path path of the file
- * @param passphrase passphrase to en-/decrypt
- * @returns a promise that resolves to the compressed and encrypted file as a transform stream
+ *
+ * @param cmd command to run
+ * @param args arguments to pass to the command
+ * @param options log options
+ * @returns
  */
-export function compressAndEncryptFile(path: string, passphrase: string) {
-  const tar = spawn('tar', ['-cvzf', '-', path]);
-  const gpg = spawn('gpg', ['-c', '--passphrase', passphrase, '--batch']);
-  const data = new Transform({
-    transform(chunk, encoding, callback) {
-      this.push(chunk);
-      callback();
-    },
-  });
+function spawnChildProcess(cmd: string, args: string[], options?: spawnChildProcessOptions): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(cmd, args);
 
-  tar.on('spawn', () => {
-    console.log('Starting file compression.');
-  });
-
-  // pipe tar to gpg
-  tar.stdout.on('data', (data) => {
-    gpg.stdin.write(data);
-  });
-
-  // close gpg stdin when tar is done
-  tar.on('close', () => {
-    gpg.stdin.end();
-    console.log('Completed file compression.');
-  });
-
-  gpg.on('spawn', () => {
-    console.log('Starting file encryption.');
-  });
-
-  // pipe gpg to data
-  gpg.stdout.pipe(data);
-
-  const promise = new Promise<Transform>((resolve, reject) => {
-    // reject if gpg or tar fails
-    tar.on('error', (err) => {
-      reject(err);
-    });
-    gpg.on('error', (err) => {
-      reject(err);
+    child.on('spawn', () => {
+      console.log(options?.log?.spawn || 'Spawning child process.');
     });
 
-    // resolve when gpg is done
-    gpg.on('close', (code) => {
+    child.on('close', (code) => {
       if (code === 0) {
-        console.log('Completed file encryption.');
-        resolve(data);
+        console.log(options?.log?.close || 'Child process closed.');
+        resolve();
       } else {
         const err = new Error(`Child process exited with code ${code}`);
         reject(err);
       }
     });
-  });
 
-  return promise;
+    child.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+/**
+ * Creates a folder.
+ * @param path path of the folder to create
+ * @returns
+ */
+export function createFolder(path: string) {
+  return spawnChildProcess('mkdir', ['-p', path], {
+    log: { spawn: 'Starting folder creation.', close: 'Completed folder creation.' },
+  });
+}
+
+/**
+ * Deletes a folder.
+ * @param path path of the folder to delete
+ * @returns
+ */
+export function removeFolder(path: string) {
+  return spawnChildProcess('rm', ['-rf', path], {
+    log: { spawn: 'Starting folder removal.', close: 'Completed folder removal.' },
+  });
+}
+
+/**
+ * Archive and compress a file/folder.
+ * @param srcPath path of the source file/folder
+ * @param destPath path of the destination file/folder
+ * @returns promise that resolves once the file/folder has been archived and compressed
+ */
+export function archiveAndCompressFile(srcPath: string, destPath: string) {
+  return spawnChildProcess('tar', ['cfvz', destPath, srcPath], {
+    log: { spawn: 'Starting file compression.', close: 'Completed file compression.' },
+  });
+}
+/**
+ * Encrypts a file.
+ * @param srcPath path of the source file
+ * @param passphrase passphrase to en-/decrypt the file
+ * @param destPath path of the destination file
+ * @returns promise that resolves once the file has been encrypted
+ */
+export function encryptFile(srcPath: string, passphrase: string, destPath: string) {
+  return spawnChildProcess('gpg', ['-c', '--passphrase', passphrase, '--batch', '--output', destPath, srcPath], {
+    log: { spawn: 'Starting file encryption.', close: 'Completed file encryption.' },
+  });
 }

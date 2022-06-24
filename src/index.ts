@@ -1,25 +1,39 @@
-import { compressAndEncryptFile } from './file';
+import { archiveAndCompressFile, createFolder, encryptFile, removeFolder } from './file';
 import 'dotenv/config';
 import { uploadFile } from './cloudflare';
 import { checkEnvVars, getDateAsString } from './utils';
 
+const TEMP_FOLDER_PATH = './temp';
+const COMPRESSED_ARCHIVE_FILE_NAME = 'backup.tar.gz';
+const COMPRESSED_ARCHIVE_PATH = `${TEMP_FOLDER_PATH}/${COMPRESSED_ARCHIVE_FILE_NAME}`;
+const ENCRYPTED_ARCHIVE_FILE_NAME = 'backup.tar.gz.gpg';
+const ENCRYPTED_ARCHIVE_PATH = `${TEMP_FOLDER_PATH}/${ENCRYPTED_ARCHIVE_FILE_NAME}`;
+
 try {
-  checkEnvVars();
   run();
 } catch (error) {
   console.error(error);
 }
 
 /**
- * Runs the backup process for all files in BACKUP_PATHS.
+ * Runs the backup process for all paths in BACKUP_PATHS.
  */
-function run() {
-  const backupPaths = process.env.BACKUP_PATHS!.split(';');
-  for (const path of backupPaths) {
-    if (path.length < 1) {
-      continue;
+async function run() {
+  checkEnvVars();
+  await removeFolder(TEMP_FOLDER_PATH);
+  await createFolder(TEMP_FOLDER_PATH);
+  try {
+    const backups = process.env.BACKUP_PATHS!.split(';');
+    for (const backup of backups) {
+      const [path, key] = backup.split(':');
+      if (path.length > 0 && key.length > 0) {
+        await backupFile(path, key);
+      }
     }
-    backupFile(path);
+  } catch (error) {
+    throw error;
+  } finally {
+    await removeFolder(TEMP_FOLDER_PATH);
   }
 }
 
@@ -27,13 +41,12 @@ function run() {
  * Compresses and encrypts a file and uploads it to Cloudflare.
  * @param path path of the file to backup
  */
-async function backupFile(path: string) {
+async function backupFile(path: string, key: string) {
   console.log(`---Starting backup of ${path}.---`);
   const passphrase = process.env.PASSPHRASE!;
-  const data = await compressAndEncryptFile(path, passphrase);
-  const fileName = path.split('/').pop()!;
-  const currentDate = getDateAsString();
-  const fileNameComplete = `${fileName}_${currentDate}.tar.gz.gpg`;
-  await uploadFile(fileNameComplete, data);
+  await archiveAndCompressFile(path, COMPRESSED_ARCHIVE_PATH);
+  await encryptFile(COMPRESSED_ARCHIVE_PATH, passphrase, ENCRYPTED_ARCHIVE_PATH);
+  const remoteKey = `${key}_${getDateAsString()}.tar.gz.gpg`;
+  await uploadFile(ENCRYPTED_ARCHIVE_PATH, remoteKey);
   console.log(`---Completed backup of ${path}.---`);
 }

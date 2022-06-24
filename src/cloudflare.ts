@@ -1,14 +1,15 @@
 import { S3 } from 'aws-sdk';
 import { ManagedUpload } from 'aws-sdk/clients/s3';
+import { createReadStream } from 'fs';
 import { Transform } from 'stream';
 
 /**
  * Upload a file to Cloudflare R2.
+ * @param path path of the file to upload
  * @param key key of the file in the R2 bucket
- * @param data data to upload
  * @returns a promise that resolves to the upload response
  */
-export async function uploadFile(key: string, data: Transform): Promise<ManagedUpload.SendData> {
+export async function uploadFile(path: string, key: string): Promise<ManagedUpload.SendData> {
   return new Promise<ManagedUpload.SendData>((resolve, reject) => {
     if (
       !process.env.ACCOUNT_ID ||
@@ -18,6 +19,8 @@ export async function uploadFile(key: string, data: Transform): Promise<ManagedU
     ) {
       return reject(new Error('Missing environment variables.'));
     }
+
+    const data = createReadStream(path);
 
     const s3 = new S3({
       endpoint: `https://${process.env.ACCOUNT_ID}.r2.cloudflarestorage.com`,
